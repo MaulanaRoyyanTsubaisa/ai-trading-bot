@@ -27,6 +27,8 @@ Platform Terminal Analitik Pasar & Bot Sinyal Trading bertenaga AI (terinspirasi
 4. **Telegram Alert Bot Otomatis:**
    - Mengirim notifikasi sinyal real-time dengan tampilan format kartu (emoji, status, level harga, dan catatan analisa AI).
    - Dilengkapi cooldown cerdas untuk menghindari spam alert berulang.
+   - TP1, TP2, TP3, dan SL dikirim sebagai reply baru ke pesan sinyal awal; kartu awal ikut diedit dengan checklist terbaru.
+   - Message ID dan progres sinyal disimpan ke disk sehingga tetap dapat dilanjutkan setelah service restart.
 
 5. **Modern Cyberpunk Web Terminal Dashboard:**
    - **Live Ticker Bar**: Pergerakan harga crypto real-time.
@@ -38,6 +40,15 @@ Platform Terminal Analitik Pasar & Bot Sinyal Trading bertenaga AI (terinspirasi
 ---
 
 ## 🚀 Cara Menjalankan Aplikasi
+
+### Produksi dengan Docker
+
+```bash
+docker compose up -d --build
+docker compose logs -f app
+```
+
+Dashboard hanya diekspos ke `127.0.0.1:8000`. Gunakan reverse proxy atau SSH tunnel untuk mengaksesnya dari luar server.
 
 ### Opsi 1: Cara Cepat (1-Klik via Windows Batch File)
 Cukup klik dua kali file **`start_terminal.bat`** di folder proyek:

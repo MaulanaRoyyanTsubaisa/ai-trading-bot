@@ -1,19 +1,18 @@
 import httpx
 import asyncio
-
-BOT_TOKEN = "8619951287:AAFupHkTgEHsj-Yy1e1-HFahisLXGtlxMUg"
+from backend.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 async def test_ids():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    
-    # Test 1: ID 8619951287 (Bot ID)
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID belum dikonfigurasi di .env")
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
     async with httpx.AsyncClient() as client:
-        r1 = await client.post(url, json={"chat_id": "8619951287", "text": "Test ID 1"})
-        print("Test 8619951287:", r1.status_code, r1.json())
-        
-        # Test 2: ID 1077659740 (User ID)
-        r2 = await client.post(url, json={"chat_id": "1077659740", "text": "Test ID 2 (Akun Pribadi Anda)"})
-        print("Test 1077659740:", r2.status_code, r2.json())
+        response = await client.post(
+            url,
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": "✅ Tes koneksi AI Trading Bot"},
+        )
+        print("Telegram test:", response.status_code, response.json().get("ok", False))
 
 if __name__ == "__main__":
     asyncio.run(test_ids())

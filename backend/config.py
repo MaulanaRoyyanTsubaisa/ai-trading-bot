@@ -38,3 +38,4 @@ WHALE_MIN_USD_VALUE = float(os.getenv("WHALE_MIN_USD_VALUE", "50000"))
 # Server Settings
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+SIGNAL_STATE_PATH = os.getenv("SIGNAL_STATE_PATH", "data/tracked_signals.json")

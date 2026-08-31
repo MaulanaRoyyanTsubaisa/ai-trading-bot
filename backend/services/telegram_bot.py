@@ -1,11 +1,14 @@
 import httpx
-import asyncio
+from html import escape
 from typing import Dict, Any, Optional
 from backend.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
-def format_signal_message(signal_data: Dict[str, Any]) -> str:
+def format_signal_message(
+    signal_data: Dict[str, Any], checklist: Optional[Dict[str, bool]] = None,
+    status: str = "IN_PROGRESS"
+) -> str:
     """
     Format signal data into a professional telegram broadcast message.
     """
@@ -27,7 +30,11 @@ def format_signal_message(signal_data: Dict[str, Any]) -> str:
             "🔴💥 [STRONG SELL]" if signal == "STRONG SELL" else \
             "🔴 [SELL / SHORT]" if signal == "SELL" else "⚪ [NEUTRAL / WAIT]"
             
-    catalysts_text = "\n".join([f"  • {c}" for c in signal_data.get("catalysts", [])[:4]])
+    checklist = checklist or {}
+    mark = lambda key: "✅" if checklist.get(key, False) else "⬜"
+    catalysts_text = "\n".join(
+        [f"  • {escape(str(c))}" for c in signal_data.get("catalysts", [])[:4]]
+    )
     
     msg = f"""
 🤖 <b>AI SIGNAL TERMINAL ALERT</b>
@@ -38,10 +45,10 @@ def format_signal_message(signal_data: Dict[str, Any]) -> str:
 💲 <b>Current Price:</b> <code>${curr_price}</code>
 
 📍 <b>Entry Zone:</b> <code>{entry_zone}</code>
-🎯 <b>Target TP 1:</b> <code>${tp1}</code>
-🎯 <b>Target TP 2:</b> <code>${tp2}</code>
-🎯 <b>Target TP 3:</b> <code>${tp3}</code>
-🛑 <b>Stop Loss:</b> <code>${sl}</code>
+{mark('tp1_reached')} <b>Target TP 1:</b> <code>${tp1}</code>
+{mark('tp2_reached')} <b>Target TP 2:</b> <code>${tp2}</code>
+{mark('tp3_reached')} <b>Target TP 3:</b> <code>${tp3}</code>
+{mark('sl_triggered')} <b>Stop Loss:</b> <code>${sl}</code>
 ⚖️ <b>Risk/Reward:</b> <code>{rrr}</code>
 
 📊 <b>Katalis Indikator:</b>
@@ -50,20 +57,25 @@ def format_signal_message(signal_data: Dict[str, Any]) -> str:
 🐋 <b>Whale Flow:</b> {signal_data.get('whale_summary', {}).get('flow_status', 'Balanced')}
 
 🧠 <b>AI Analyst Note:</b>
-<i>{signal_data.get('ai_rationale', '')}</i>
+<i>{escape(str(signal_data.get('ai_rationale', '')))}</i>
+📌 <b>Status:</b> {escape(status)}
 ━━━━━━━━━━━━━━━━━━━━
 ⚠️ <i>Disclaimer: Analisa berbasis AI & kuantitatif. Selalu gunakan risk management yang bijak.</i>
 """
     return msg.strip()
 
-async def send_telegram_message(message: str, chat_id: Optional[str] = None) -> bool:
+async def send_telegram_message(
+    message: str,
+    chat_id: Optional[str] = None,
+    reply_to_message_id: Optional[int] = None,
+) -> Optional[int]:
     """
     Send formatted HTML message to Telegram.
     """
     target_chat = chat_id or TELEGRAM_CHAT_ID
     if not TELEGRAM_BOT_TOKEN or not target_chat:
         print("[Telegram Bot] Bot Token or Chat ID not configured. Skipping live send.")
-        return False
+        return None
         
     url = f"{TELEGRAM_API_URL}/sendMessage"
     payload = {
@@ -72,23 +84,80 @@ async def send_telegram_message(message: str, chat_id: Optional[str] = None) -> 
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
+    if reply_to_message_id is not None:
+        payload["reply_parameters"] = {
+            "message_id": int(reply_to_message_id),
+            "allow_sending_without_reply": True,
+        }
     
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 print(f"[Telegram Bot] Message sent successfully to {target_chat}")
-                return True
+                return resp.json().get("result", {}).get("message_id")
             else:
                 print(f"[Telegram Bot] Error sending message: {resp.text}")
-                return False
+                return None
         except Exception as e:
             print(f"[Telegram Bot] Exception: {e}")
+            return None
+
+async def edit_telegram_message(
+    message_id: int, message: str, chat_id: Optional[str] = None
+) -> bool:
+    target_chat = chat_id or TELEGRAM_CHAT_ID
+    if not TELEGRAM_BOT_TOKEN or not target_chat:
+        return False
+    payload = {
+        "chat_id": target_chat,
+        "message_id": int(message_id),
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(f"{TELEGRAM_API_URL}/editMessageText", json=payload)
+            if resp.status_code == 200:
+                return True
+            # Telegram returns this harmless error if content is already identical.
+            if resp.status_code == 400 and "message is not modified" in resp.text.lower():
+                return True
+            print(f"[Telegram Bot] Error editing message: {resp.text}")
+            return False
+        except Exception as exc:
+            print(f"[Telegram Bot] Edit exception: {exc}")
             return False
 
-async def send_signal_alert(signal_data: Dict[str, Any]) -> bool:
-    message = format_signal_message(signal_data)
+def format_progress_message(item: Dict[str, Any], level: str, price: float) -> str:
+    checklist = item["checklist"]
+    mark = lambda key: "✅" if checklist.get(key, False) else "⬜"
+    icon = "🛑" if level == "SL" else "✅"
+    return (
+        f"{icon} <b>{escape(level)} HIT — {escape(item['symbol'])} {escape(item['action'])}</b>\n"
+        f"Harga terpantau: <code>${price}</code>\n"
+        f"Progress: {mark('tp1_reached')} TP1  {mark('tp2_reached')} TP2  "
+        f"{mark('tp3_reached')} TP3  {mark('sl_triggered')} SL\n"
+        f"Status: <b>{escape(item['status'])}</b>\n"
+        "↩️ Update ini me-reply sinyal awal agar progres mudah dilacak."
+    )
+
+async def send_signal_alert(
+    signal_data: Dict[str, Any], checklist: Optional[Dict[str, bool]] = None,
+    status: str = "IN_PROGRESS"
+) -> Optional[int]:
+    message = format_signal_message(signal_data, checklist, status)
     return await send_telegram_message(message)
+
+async def send_progress_alert(item: Dict[str, Any], level: str, price: float) -> Optional[int]:
+    message_id = item.get("telegram_message_id")
+    if not message_id:
+        return None
+    return await send_telegram_message(
+        format_progress_message(item, level, price),
+        reply_to_message_id=message_id,
+    )
 
 async def test_telegram_connection() -> Dict[str, Any]:
     """

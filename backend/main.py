@@ -10,6 +10,7 @@ from backend.services.ta_engine import analyze_candlesticks
 from backend.services.whale_tracker import get_recent_large_trades, scan_market_whale_activity
 from backend.services.ai_analyst import generate_hybrid_signal, generate_deep_ai_insights
 from backend.services.telegram_bot import send_signal_alert, send_telegram_message, test_telegram_connection
+from backend.services.signal_tracker import attach_telegram_message, get_active_signal, record_new_signal
 from backend.services.scheduler import background_scanner_loop, run_full_market_scan, analyze_single_symbol, signal_history
 
 @asynccontextmanager
@@ -177,17 +178,23 @@ async def send_test_telegram():
         whale_result = await get_recent_large_trades("BTCUSDT")
         live_signal = generate_hybrid_signal("BTCUSDT", "1h", ta_result, whale_result)
         
-    sent = await send_signal_alert(live_signal)
+    tracked = get_active_signal(live_signal["symbol"], live_signal["action"]) or record_new_signal(live_signal)
+    sent = await send_signal_alert(live_signal, tracked["checklist"], tracked["status"])
+    if sent:
+        attach_telegram_message(tracked["id"], sent)
     return {
-        "success": sent,
+        "success": bool(sent),
         "message": f"Pesan sinyal REAL-TIME {live_signal['symbol']} (Harga Aktual: ${live_signal['current_price']}) terkirim ke Telegram!" if sent else "Gagal mengirim ke Telegram.",
         "signal": live_signal
     }
 
 @app.post("/api/telegram/dispatch")
 async def dispatch_signal_to_telegram(signal: Dict[str, Any] = Body(...)):
-    sent = await send_signal_alert(signal)
-    return {"success": sent}
+    tracked = get_active_signal(signal["symbol"], signal["action"]) or record_new_signal(signal)
+    sent = await send_signal_alert(signal, tracked["checklist"], tracked["status"])
+    if sent:
+        attach_telegram_message(tracked["id"], sent)
+    return {"success": bool(sent)}
 
 if __name__ == "__main__":
     import uvicorn

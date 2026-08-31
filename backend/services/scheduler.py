@@ -6,9 +6,21 @@ from backend.services.market_data import get_klines
 from backend.services.ta_engine import analyze_candlesticks
 from backend.services.whale_tracker import get_recent_large_trades
 from backend.services.ai_analyst import generate_hybrid_signal
-from backend.services.telegram_bot import send_signal_alert
+from backend.services.telegram_bot import (
+    edit_telegram_message,
+    format_signal_message,
+    send_progress_alert,
+    send_signal_alert,
+)
 
-from backend.services.signal_tracker import record_new_signal, update_tracked_signals
+from backend.services.signal_tracker import (
+    attach_telegram_message,
+    get_active_signal,
+    get_pending_progress_events,
+    mark_progress_notified,
+    record_new_signal,
+    update_tracked_signals,
+)
 
 # In-memory storage for signals & scans
 signal_history: List[Dict[str, Any]] = []
@@ -73,6 +85,23 @@ async def background_scanner_loop():
             print("[Scanner Loop] Running scheduled market scan & performance tracker...")
             signals = await run_full_market_scan()
             await update_tracked_signals()
+
+            # Emit every newly reached level as a reply to the original signal,
+            # then edit the original card so its checklist stays current.
+            for event in get_pending_progress_events():
+                item = event["item"]
+                if not item.get("telegram_message_id"):
+                    continue
+                reply_id = await send_progress_alert(item, event["level"], event["price"])
+                if not reply_id:
+                    continue
+                mark_progress_notified(item["id"], event["level"])
+                original_signal = item.get("telegram_signal", {})
+                if original_signal:
+                    await edit_telegram_message(
+                        item["telegram_message_id"],
+                        format_signal_message(original_signal, item["checklist"], item["status"]),
+                    )
             
             # Check for high confidence signals to send to Telegram
             current_time = time.time()
@@ -86,9 +115,19 @@ async def background_scanner_loop():
                     last_alert = last_alerted_timestamps.get(sym, 0)
                     # Alert cooldown: 30 minutes for the same symbol
                     if current_time - last_alert > 1800:
+                        tracked = get_active_signal(sym, action) or record_new_signal(sig)
+                        # A persisted active signal already has its original Telegram
+                        # message; do not create a duplicate after an app restart.
+                        if tracked.get("telegram_message_id"):
+                            last_alerted_timestamps[sym] = current_time
+                            continue
                         print(f"[Scanner Alert] Triggering alert for {sym} ({sig['signal']} - {conf}%)")
-                        await send_signal_alert(sig)
-                        last_alerted_timestamps[sym] = current_time
+                        message_id = await send_signal_alert(
+                            sig, tracked["checklist"], tracked["status"]
+                        )
+                        if message_id:
+                            attach_telegram_message(tracked["id"], message_id)
+                            last_alerted_timestamps[sym] = current_time
                         
         except Exception as e:
             print(f"[Scanner Loop] Error in scanner iteration: {e}")

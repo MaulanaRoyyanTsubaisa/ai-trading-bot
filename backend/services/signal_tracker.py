@@ -1,10 +1,36 @@
 import asyncio
+import json
 import time
+from pathlib import Path
 from typing import List, Dict, Any, Optional
+from backend.config import SIGNAL_STATE_PATH
 from backend.services.market_data import get_ticker_24h
 
-# In-memory performance tracker
-tracked_signals: List[Dict[str, Any]] = []
+ACTIVE_STATUSES = {"IN_PROGRESS", "TP1_HIT", "TP2_HIT"}
+STATE_PATH = Path(SIGNAL_STATE_PATH)
+
+
+def _load_state() -> List[Dict[str, Any]]:
+    try:
+        if STATE_PATH.exists():
+            data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+    except (OSError, ValueError) as exc:
+        print(f"[Signal Tracker] Failed loading state: {exc}")
+    return []
+
+
+def _save_state() -> None:
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = STATE_PATH.with_suffix(".tmp")
+        temporary.write_text(json.dumps(tracked_signals, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(STATE_PATH)
+    except OSError as exc:
+        print(f"[Signal Tracker] Failed saving state: {exc}")
+
+
+tracked_signals: List[Dict[str, Any]] = _load_state()
 
 def record_new_signal(signal: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -37,18 +63,78 @@ def record_new_signal(signal: Dict[str, Any]) -> Dict[str, Any]:
             "tp3_reached": False,
             "sl_triggered": False
         },
-        "catalysts": signal.get("catalysts", [])
+        "catalysts": signal.get("catalysts", []),
+        "telegram_message_id": None,
+        "telegram_notified_levels": [],
+        "telegram_signal": signal,
     }
     
     # Avoid duplicate active tracking for exact same coin and action within 15 min
     global tracked_signals
-    existing = [s for s in tracked_signals if s["symbol"] == signal["symbol"] and s["status"] == "IN_PROGRESS"]
-    if not existing:
-        tracked_signals.insert(0, track_item)
-        if len(tracked_signals) > 100:
-            tracked_signals = tracked_signals[:100]
-            
+    existing = [
+        s for s in tracked_signals
+        if s["symbol"] == signal["symbol"]
+        and s.get("action") == signal.get("action")
+        and s["status"] in ACTIVE_STATUSES
+    ]
+    if existing:
+        return existing[0]
+    tracked_signals.insert(0, track_item)
+    if len(tracked_signals) > 100:
+        tracked_signals = tracked_signals[:100]
+    _save_state()
     return track_item
+
+
+def attach_telegram_message(signal_id: str, message_id: int) -> bool:
+    for item in tracked_signals:
+        if item["id"] == signal_id:
+            item["telegram_message_id"] = int(message_id)
+            _save_state()
+            return True
+    return False
+
+
+def get_active_signal(symbol: str, action: str) -> Optional[Dict[str, Any]]:
+    return next(
+        (
+            item for item in tracked_signals
+            if item["symbol"] == symbol
+            and item.get("action") == action
+            and item["status"] in ACTIVE_STATUSES
+        ),
+        None,
+    )
+
+
+def get_pending_progress_events() -> List[Dict[str, Any]]:
+    level_keys = (
+        ("TP1", "tp1_reached"),
+        ("TP2", "tp2_reached"),
+        ("TP3", "tp3_reached"),
+        ("SL", "sl_triggered"),
+    )
+    events: List[Dict[str, Any]] = []
+    for item in tracked_signals:
+        if not item.get("telegram_message_id"):
+            continue
+        notified = item.get("telegram_notified_levels", [])
+        for level, key in level_keys:
+            if item["checklist"].get(key) and level not in notified:
+                events.append({"item": item, "level": level, "price": item["current_price"]})
+    return events
+
+
+def mark_progress_notified(signal_id: str, level: str) -> bool:
+    for item in tracked_signals:
+        if item["id"] != signal_id:
+            continue
+        notified = item.setdefault("telegram_notified_levels", [])
+        if level not in notified:
+            notified.append(level)
+            _save_state()
+        return True
+    return False
 
 async def update_tracked_signals() -> Dict[str, Any]:
     """
@@ -65,6 +151,7 @@ async def update_tracked_signals() -> Dict[str, Any]:
         
     price_map = {t["symbol"]: t["price"] for t in tickers_list}
     
+    state_changed = False
     for item in active_items:
         sym = item["symbol"]
         if sym not in price_map:
@@ -75,6 +162,9 @@ async def update_tracked_signals() -> Dict[str, Any]:
         entry = item["entry_price"]
         action = item["action"]
         
+        previous_checklist = dict(item["checklist"])
+        previous_status = item["status"]
+
         # Calculate current PnL %
         if action == "LONG":
             pnl = ((curr - entry) / entry) * 100
@@ -119,6 +209,12 @@ async def update_tracked_signals() -> Dict[str, Any]:
         item["pnl_percent"] = round(pnl, 2)
         if pnl > item["max_gain_percent"]:
             item["max_gain_percent"] = round(pnl, 2)
+
+        if item["checklist"] != previous_checklist or item["status"] != previous_status:
+            state_changed = True
+
+    if state_changed:
+        _save_state()
 
     return get_performance_summary()
 

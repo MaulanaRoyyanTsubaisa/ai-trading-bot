@@ -1,9 +1,10 @@
 import httpx
 import asyncio
-
-TELEGRAM_BOT_TOKEN = "8619951287:AAFupHkTgEHsj-Yy1e1-HFahisLXGtlxMUg"
+from backend.config import TELEGRAM_BOT_TOKEN
 
 async def check_updates():
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN belum dikonfigurasi di .env")
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(url)
