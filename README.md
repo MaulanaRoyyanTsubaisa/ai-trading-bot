@@ -48,7 +48,7 @@ docker compose up -d --build
 docker compose logs -f app
 ```
 
-Dashboard hanya diekspos ke `127.0.0.1:8000`. Gunakan reverse proxy atau SSH tunnel untuk mengaksesnya dari luar server.
+Dashboard hanya diekspos ke `127.0.0.1:8790` secara default. Gunakan reverse proxy atau SSH tunnel untuk mengaksesnya dari luar server.
 
 ### Opsi 1: Cara Cepat (1-Klik via Windows Batch File)
 Cukup klik dua kali file **`start_terminal.bat`** di folder proyek:
