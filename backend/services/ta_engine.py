@@ -68,7 +68,10 @@ def calculate_cmf(df: pd.DataFrame, period: int = 20) -> pd.Series:
     cmf = mf_volume.rolling(window=period).sum() / (volume.rolling(window=period).sum() + 1e-10)
     return cmf
 
-def calculate_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float = 3.0) -> Dict[str, Any]:
+def calculate_supertrend(
+    df: pd.DataFrame, period: int = 10, multiplier: float = 3.0,
+    price_decimals: int = 4,
+) -> Dict[str, Any]:
     atr = calculate_atr(df, period)
     hl2 = (df['high'] + df['low']) / 2
     upper_band = hl2 + (multiplier * atr)
@@ -111,10 +114,12 @@ def calculate_supertrend(df: pd.DataFrame, period: int = 10, multiplier: float =
         
     return {
         "is_bullish": supertrend[-1],
-        "supertrend_value": round(final_st_val, 4)
+        "supertrend_value": round(final_st_val, price_decimals)
     }
 
-def analyze_candlesticks(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
+def analyze_candlesticks(
+    candles: List[Dict[str, Any]], price_decimals: int = 4
+) -> Dict[str, Any]:
     """
     Full technical analysis suite on candle data.
     """
@@ -146,7 +151,7 @@ def analyze_candlesticks(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
     df['cmf'] = calculate_cmf(df, period=20)
     
     # Supertrend
-    st_res = calculate_supertrend(df)
+    st_res = calculate_supertrend(df, price_decimals=price_decimals)
     
     # Volume moving averages
     df['vol_ma20'] = df['volume'].rolling(window=20).mean()
@@ -227,29 +232,29 @@ def analyze_candlesticks(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         "current_price": current_price,
         "indicators": {
             "rsi": round(rsi_val, 2),
-            "macd": round(float(last['macd']), 4),
-            "macd_signal": round(float(last['macd_signal']), 4),
-            "macd_hist": round(macd_hist, 4),
-            "ema20": round(ema20, 4),
-            "ema50": round(ema50, 4),
-            "ema200": round(ema200, 4),
-            "bb_upper": round(float(last['bb_upper']), 4),
-            "bb_middle": round(float(last['bb_middle']), 4),
-            "bb_lower": round(float(last['bb_lower']), 4),
+            "macd": round(float(last['macd']), price_decimals),
+            "macd_signal": round(float(last['macd_signal']), price_decimals),
+            "macd_hist": round(macd_hist, price_decimals),
+            "ema20": round(ema20, price_decimals),
+            "ema50": round(ema50, price_decimals),
+            "ema200": round(ema200, price_decimals),
+            "bb_upper": round(float(last['bb_upper']), price_decimals),
+            "bb_middle": round(float(last['bb_middle']), price_decimals),
+            "bb_lower": round(float(last['bb_lower']), price_decimals),
             "bb_bandwidth": round(float(last['bb_bandwidth']), 2),
-            "atr": round(float(last['atr']), 4),
+            "atr": round(float(last['atr']), price_decimals),
             "cmf": round(cmf_val, 4),
             "supertrend_bullish": st_res["is_bullish"],
             "supertrend_value": st_res["supertrend_value"],
             "volume_ratio": round(volume_ratio, 2)
         },
         "levels": {
-            "support_1": round(s1, 4),
-            "support_2": round(s2, 4),
-            "resistance_1": round(r1, 4),
-            "resistance_2": round(r2, 4),
-            "recent_high": round(float(recent_highs), 4),
-            "recent_low": round(float(recent_lows), 4)
+            "support_1": round(s1, price_decimals),
+            "support_2": round(s2, price_decimals),
+            "resistance_1": round(r1, price_decimals),
+            "resistance_2": round(r2, price_decimals),
+            "recent_high": round(float(recent_highs), price_decimals),
+            "recent_low": round(float(recent_lows), price_decimals)
         },
         "signals": signals
     }

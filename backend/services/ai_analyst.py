@@ -16,6 +16,11 @@ def generate_hybrid_signal(symbol: str, timeframe: str, ta_result: Dict[str, Any
     levels = ta_result["levels"]
     signals = ta_result["signals"]
     atr = indicators.get("atr", current_price * 0.02)
+    price_decimals = 8 if symbol.upper() == "PEPEUSDT" else 4
+    round_price = lambda value: round(value, price_decimals)
+    display_price = lambda value: (
+        f"{float(value):.8f}" if symbol.upper() == "PEPEUSDT" else str(value)
+    )
     
     # Calculate Bullish vs Bearish score
     bullish_score = 0
@@ -65,38 +70,38 @@ def generate_hybrid_signal(symbol: str, timeframe: str, ta_result: Dict[str, Any
 
     # Price targets calculations based on ATR & Key Support/Resistance
     if action == "LONG":
-        entry_low = round(current_price * 0.997, 4)
-        entry_high = round(current_price * 1.002, 4)
-        entry_zone = f"${entry_low} - ${entry_high}"
+        entry_low = round_price(current_price * 0.997)
+        entry_high = round_price(current_price * 1.002)
+        entry_zone = f"${display_price(entry_low)} - ${display_price(entry_high)}"
         
         # Stop loss below support / 1.5 * ATR
-        sl_val = round(max(current_price - (atr * 1.5), levels["support_1"] * 0.995), 4)
+        sl_val = round_price(max(current_price - (atr * 1.5), levels["support_1"] * 0.995))
         risk = current_price - sl_val
         
-        tp1_val = round(current_price + (risk * 1.2), 4)
-        tp2_val = round(current_price + (risk * 2.0), 4)
-        tp3_val = round(current_price + (risk * 3.5), 4)
+        tp1_val = round_price(current_price + (risk * 1.2))
+        tp2_val = round_price(current_price + (risk * 2.0))
+        tp3_val = round_price(current_price + (risk * 3.5))
         
         rrr = round((tp2_val - current_price) / (risk + 1e-6), 2)
     elif action == "SHORT":
-        entry_low = round(current_price * 0.998, 4)
-        entry_high = round(current_price * 1.003, 4)
-        entry_zone = f"${entry_low} - ${entry_high}"
+        entry_low = round_price(current_price * 0.998)
+        entry_high = round_price(current_price * 1.003)
+        entry_zone = f"${display_price(entry_low)} - ${display_price(entry_high)}"
         
-        sl_val = round(min(current_price + (atr * 1.5), levels["resistance_1"] * 1.005), 4)
+        sl_val = round_price(min(current_price + (atr * 1.5), levels["resistance_1"] * 1.005))
         risk = sl_val - current_price
         
-        tp1_val = round(current_price - (risk * 1.2), 4)
-        tp2_val = round(current_price - (risk * 2.0), 4)
-        tp3_val = round(current_price - (risk * 3.5), 4)
+        tp1_val = round_price(current_price - (risk * 1.2))
+        tp2_val = round_price(current_price - (risk * 2.0))
+        tp3_val = round_price(current_price - (risk * 3.5))
         
         rrr = round((current_price - tp2_val) / (risk + 1e-6), 2)
     else:
-        entry_zone = f"${current_price}"
-        sl_val = round(current_price * 0.98, 4)
-        tp1_val = round(current_price * 1.02, 4)
-        tp2_val = round(current_price * 1.04, 4)
-        tp3_val = round(current_price * 1.06, 4)
+        entry_zone = f"${display_price(current_price)}"
+        sl_val = round_price(current_price * 0.98)
+        tp1_val = round_price(current_price * 1.02)
+        tp2_val = round_price(current_price * 1.04)
+        tp3_val = round_price(current_price * 1.06)
         rrr = 1.0
 
     # Build detailed AI analysis narrative (Indonesian)
@@ -112,7 +117,7 @@ def generate_hybrid_signal(symbol: str, timeframe: str, ta_result: Dict[str, Any
             f"Katalis utama: {', '.join(key_points[:3]) if key_points else 'Momentum positif'}. {whale_info}"
         )
         rationale_paragraphs.append(
-            f"Strategi eksekusi: Manfaatkan area entry {entry_zone}. Pasang Stop Loss disiplin di ${sl_val} dengan rasio Risk/Reward {rrr}:1 menuju target utama TP2 (${tp2_val})."
+            f"Strategi eksekusi: Manfaatkan area entry {entry_zone}. Pasang Stop Loss disiplin di ${display_price(sl_val)} dengan rasio Risk/Reward {rrr}:1 menuju target utama TP2 (${display_price(tp2_val)})."
         )
     elif action == "SHORT":
         rationale_paragraphs.append(
@@ -122,7 +127,7 @@ def generate_hybrid_signal(symbol: str, timeframe: str, ta_result: Dict[str, Any
             f"Katalis utama: {', '.join(key_points[:3]) if key_points else 'Tekanan distribusi'}. {whale_info}"
         )
         rationale_paragraphs.append(
-            f"Strategi eksekusi: Ambil posisi Sell/Short di area {entry_zone} dengan batas risiko Stop Loss di ${sl_val} dan target TP2 di ${tp2_val}."
+            f"Strategi eksekusi: Ambil posisi Sell/Short di area {entry_zone} dengan batas risiko Stop Loss di ${display_price(sl_val)} dan target TP2 di ${display_price(tp2_val)}."
         )
     else:
         rationale_paragraphs.append(

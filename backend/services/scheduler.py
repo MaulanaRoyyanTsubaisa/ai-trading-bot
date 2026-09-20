@@ -33,7 +33,11 @@ async def analyze_single_symbol(symbol: str, timeframe: str = DEFAULT_TIMEFRAME)
         if not candles or len(candles) < 30:
             return None
             
-        ta_result = analyze_candlesticks(candles)
+        # PEPE trades below four decimal places. Preserve eight decimals only
+        # for this pair; every other symbol keeps the original precision.
+        ta_result = analyze_candlesticks(
+            candles, price_decimals=8 if symbol.upper() == "PEPEUSDT" else 4
+        )
         if "error" in ta_result:
             return None
             

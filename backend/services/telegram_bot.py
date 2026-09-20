@@ -5,6 +5,12 @@ from backend.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
+def _display_price(symbol: str, value: Any) -> str:
+    """Keep legacy display unchanged except for PEPE's sub-cent prices."""
+    if str(symbol).upper() == "PEPEUSDT":
+        return f"{float(value):.8f}"
+    return str(value)
+
 def format_signal_message(
     signal_data: Dict[str, Any], checklist: Optional[Dict[str, bool]] = None,
     status: str = "IN_PROGRESS"
@@ -16,12 +22,12 @@ def format_signal_message(
     signal = signal_data["signal"]
     action = signal_data["action"]
     confidence = signal_data["confidence"]
-    curr_price = signal_data["current_price"]
+    curr_price = _display_price(symbol, signal_data["current_price"])
     entry_zone = signal_data["entry_zone"]
-    tp1 = signal_data["take_profit_1"]
-    tp2 = signal_data["take_profit_2"]
-    tp3 = signal_data["take_profit_3"]
-    sl = signal_data["stop_loss"]
+    tp1 = _display_price(symbol, signal_data["take_profit_1"])
+    tp2 = _display_price(symbol, signal_data["take_profit_2"])
+    tp3 = _display_price(symbol, signal_data["take_profit_3"])
+    sl = _display_price(symbol, signal_data["stop_loss"])
     rrr = signal_data["risk_reward_ratio"]
     timeframe = signal_data.get("timeframe", "1h")
     
@@ -136,7 +142,7 @@ def format_progress_message(item: Dict[str, Any], level: str, price: float) -> s
     icon = "🛑" if level == "SL" else "✅"
     return (
         f"{icon} <b>{escape(level)} HIT — {escape(item['symbol'])} {escape(item['action'])}</b>\n"
-        f"Harga terpantau: <code>${price}</code>\n"
+        f"Harga terpantau: <code>${_display_price(item['symbol'], price)}</code>\n"
         f"Progress: {mark('tp1_reached')} TP1  {mark('tp2_reached')} TP2  "
         f"{mark('tp3_reached')} TP3  {mark('sl_triggered')} SL\n"
         f"Status: <b>{escape(item['status'])}</b>\n"
